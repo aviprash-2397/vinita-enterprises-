@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#f97316"/>
+  <path d="M256 110 L416 190 L416 322 L256 402 L96 322 L96 190 Z" fill="#fff" opacity="0.95"/>
+  <path d="M256 110 L416 190 L256 270 L96 190 Z" fill="#fff"/>
+  <path d="M96 190 L96 322 L256 402 L256 270 Z" fill="#ea580c" opacity="0.4"/>
+  <path d="M416 190 L416 322 L256 402 L256 270 Z" fill="#fed7aa" opacity="0.7"/>
+  <text x="256" y="466" font-family="-apple-system, sans-serif" font-size="56" font-weight="800" text-anchor="middle" fill="#fff">VE</text>
+</svg>
