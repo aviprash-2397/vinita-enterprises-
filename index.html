@@ -360,6 +360,9 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
   background: radial-gradient(circle, rgba(255,138,0,0.1) 0%, rgba(0,0,0,0) 70%);
   pointer-events:none;
 }
+
+#at-analytics { max-width: 100% !important; padding: 20px 5% !important; }
+@media (max-width: 768px) { #at-analytics { padding: 20px 16px !important; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <style>
@@ -3510,7 +3513,7 @@ async function loadForecasts() {
 async function loadReports(){
   const el=document.getElementById('reports-content');el.innerHTML=skeletonList();
   const{data}=await db.from('orders').select('order_date, status, salesmen!orders_salesman_id_fkey(id,name), retailers(id,name), payments(status), order_items(quantity,rate)').order('order_date',{ascending:false}).limit(500);
-  if(!data?.length){el.innerHTML='<div class="empty"><div class="ei"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg></div><div class="empty-title">No data yet</div><div class="empty-sub">Place a few orders to see reports here.</div></div>';return;}
+  if(!data){ data = []; }
   
   const{data:retData}=await db.from('retailers').select('id, name, outstanding, contact');
   S.adminAllRetailers=retData||[];
@@ -4677,7 +4680,13 @@ function renderRetailerAnalytics() {
   
   const options = {
     series: [{ name: 'Share %', data }],
-    chart: { type: 'bar', height: 250, foreColor: '#aaa', toolbar: { show: false }, background: 'transparent' },
+    chart: {
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            alert('Deep Research View: Drill-down capabilities will be enabled in the upcoming module.');
+          }
+        },
+        type: 'bar', height: 250, foreColor: '#aaa', toolbar: { show: false }, background: 'transparent' },
     plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
     colors: ['#4285F4', '#81C784', '#FFB74D'],
     dataLabels: { enabled: true, formatter: val => val + "%" },
@@ -4717,7 +4726,13 @@ function renderProductPerformance() {
       { name: 'Eco-Goods', data: ecoData },
       { name: 'Healthcare', data: healthData }
     ],
-    chart: { type: 'bar', height: 250, foreColor: '#aaa', toolbar: { show: false }, stacked: false },
+    chart: {
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            alert('Deep Research View: Drill-down capabilities will be enabled in the upcoming module.');
+          }
+        },
+        type: 'bar', height: 250, foreColor: '#aaa', toolbar: { show: false }, stacked: false },
     colors: ['#4285F4', '#81C784'],
     plotOptions: { bar: { borderRadius: 4, columnWidth: '60%' } },
     dataLabels: { enabled: false },
@@ -4749,7 +4764,13 @@ function renderRegionalDebt() {
   const options = {
     series: series.length ? series : [1],
     labels: series.length ? sortedAreas : ['No Debt'],
-    chart: { type: 'donut', height: 250, foreColor: '#aaa', background: 'transparent' },
+    chart: {
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            alert('Deep Research View: Drill-down capabilities will be enabled in the upcoming module.');
+          }
+        },
+        type: 'donut', height: 250, foreColor: '#aaa', background: 'transparent' },
     colors: series.length ? ['#EF5350', '#FF9800', '#4285F4', '#81C784', '#AB47BC'] : ['#333'],
     plotOptions: { pie: { donut: { size: '65%' } } },
     dataLabels: { enabled: false },
@@ -5051,7 +5072,13 @@ function renderStatisticRadials(orders, common) {
     if(analyticsCharts['rad'+i]) analyticsCharts['rad'+i].destroy();
     const opt = {
       series: [m.pct],
-      chart: { type: 'radialBar', height: 180, sparkline: { enabled: true } },
+      chart: {
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            alert('Deep Research View: Drill-down capabilities will be enabled in the upcoming module.');
+          }
+        },
+        type: 'radialBar', height: 180, sparkline: { enabled: true } },
       plotOptions: {
         radialBar: {
           startAngle: -90,
@@ -5371,7 +5398,13 @@ function renderDetailedForecastChart(projected, dailyAvg) {
     }
     
     const opt = {
-        chart: { type: 'area', height: 250, foreColor: '#888', toolbar: {show:false}, background: 'transparent', fontFamily: 'Inter' },
+        chart: {
+        events: {
+          dataPointSelection: function(event, chartContext, config) {
+            alert('Deep Research View: Drill-down capabilities will be enabled in the upcoming module.');
+          }
+        },
+        type: 'area', height: 250, foreColor: '#888', toolbar: {show:false}, background: 'transparent', fontFamily: 'Inter' },
         theme: { mode: 'dark' },
         series: [{ name: 'Projected Demand', data: vals.map(v=>Math.round(v)) }],
         xaxis: { categories: cats, tickAmount: 6, tooltip: {enabled:false} },
