@@ -320,11 +320,20 @@ async function loadSalesmanHome(){
   const yestRev=yestOrders.reduce((s,o)=>s+orderTotal(o),0);
   const monthRev=monthOrders.reduce((s,o)=>s+orderTotal(o),0);
   const unpaidCount=all.filter(o=>o.status!=='cancelled'&&(o.payments?.[0]?.status||'unpaid')!=='paid').length;
-  const undelivered=all.filter(o=>['placed','confirmed','dispatched'].includes(o.status||'placed')).length;
+  
+  // Fetch ALL undelivered orders across the company for salesmen acting as delivery agents
+  const {data: globalUndelivData} = await db.from('orders')
+    .select('*, retailers(id,name,contact,area,outstanding,credit_limit), order_items(quantity,bonus_quantity,rate,product_id,products(name,sku)), payments(status), salesmen!orders_salesman_id_fkey(name)')
+    .in('status', ['placed', 'confirmed', 'dispatched'])
+    .order('created_at',{ascending:false})
+    .limit(300);
+  
+  const globalUndelivered = globalUndelivData || [];
+  const undelivered = globalUndelivered.length;
 
   // Cache filtered lists for the salesman orders page to pick up
   S.salesmanStatViews={today:todayOrders,yesterday:yestOrders,month:monthOrders,
-    undelivered:all.filter(o=>['placed','confirmed','dispatched'].includes(o.status||'placed')),
+    undelivered:globalUndelivered,
     unpaid:all.filter(o=>o.status!=='cancelled'&&(o.payments?.[0]?.status||'unpaid')!=='paid')};
 
   document.getElementById('sh-stats').innerHTML=`
@@ -4009,44 +4018,30 @@ function filterAnalytics(key, el) {
 function renderAnalyticsDashboard() {
   try {
     const allOrders = window._analyticsData.orders;
-  const allCols = window._analyticsData.collections;
+    const allCols = window._analyticsData.collections;
 
-  // Apply Date Filter
-  const range = getDateRange(S.analyticsFilter);
-  const orders = allOrders;
+    const orders = allOrders;
 
-  // Common Theme config
-  const theme = { mode: 'dark' };
-  const common = {
-    chart: { foreColor: '#A0AEC0', toolbar: { show: false }, background: 'transparent', fontFamily: 'Inter, sans-serif' },
-    theme: theme,
-    colors: ['#00E396', '#FEB019', '#FF4560', '#775DD0', '#008FFB', '#3F51B5', '#4CAF50', '#F9CE1D'],
-    tooltip: { theme: 'dark', style: { fontSize: '13px' } },
-    grid: { borderColor: '#2C2C2E', strokeDashArray: 4 }
-  };
+    // Common Neon Theme config
+    const theme = { mode: 'dark' };
+    const common = {
+      chart: { foreColor: '#A0AEC0', toolbar: { show: false }, background: 'transparent', fontFamily: 'Inter, sans-serif' },
+      theme: theme,
+      colors: ['#FF2A85', '#00F2FE', '#8E2DE2', '#4FACFE', '#00E396', '#FEB019'],
+      tooltip: { theme: 'dark', style: { fontSize: '13px' } },
+      grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 4 }
+    };
 
-  // 1. Line Graph (Sales Trends - 30 days or filtered)
-  renderTrendsChart(orders, common);
-
-  // 2. Bar Chart (Top Salesmen by Area)
-  renderSalesmenChart(orders, common);
-
-  // 3. Donut (Payment Modes)
-  renderPaymentDonut(orders, common);
-
-  // 4. Treemap (Company / Category)
-  renderTreemap(orders, common);
-
-  // 5. Heatmap (Product across Areas)
-  renderHeatmap(orders, common);
-
-  // 6. Scatter Plot (Order Size vs Credit)
-  renderScatter(orders, common);
-
-  // 7. Histogram (Order Size Dist)
-  renderHistogram(orders, common);
-  document.getElementById('analytics-error').style.display='none';
-  document.getElementById('analytics-loading').style.display='none';
+    renderStatisticRadials(orders, common);
+    renderTrendsChart(orders, common);
+    renderNetworkTopology(orders, common);
+    renderTreemap(orders, common);
+    renderHeatmap(orders, common);
+    renderSalesmenChart(orders, common);
+    renderHistogram(orders, common);
+    
+    document.getElementById('analytics-error').style.display='none';
+    document.getElementById('analytics-loading').style.display='none';
   } catch(e) {
     document.getElementById('analytics-error').style.display='block';
     document.getElementById('analytics-error').textContent = 'Render Error: ' + e.message + ' \n' + e.stack;
@@ -4054,7 +4049,50 @@ function renderAnalyticsDashboard() {
   }
 }
 
-// 1. Trends Line Chart
+// 0. Top Row Statistic Radials
+function renderStatisticRadials(orders, common) {
+  const totOrders = orders.length || 1;
+  const delivered = orders.filter(o => o.status === 'delivered').length;
+  const paid = orders.filter(o => (o.payments?.[0]?.status) === 'paid').length;
+  
+  const activeRet = new Set(orders.map(o => o.retailers?.id)).size;
+  const totalRet = S.adminAllRetailers?.length || Math.max(activeRet, 1);
+
+  const monthRev = orders.reduce((s,o)=>s+((o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0)),0);
+  const target = 500000; // Example target
+  
+  const metrics = [
+    { id: 'chart-radial-1', pct: Math.round((delivered/totOrders)*100), color: '#FF2A85', label: 'Delivery' },
+    { id: 'chart-radial-2', pct: Math.round((paid/totOrders)*100), color: '#00F2FE', label: 'Collection' },
+    { id: 'chart-radial-3', pct: Math.round((activeRet/totalRet)*100), color: '#8E2DE2', label: 'Active Ret' },
+    { id: 'chart-radial-4', pct: Math.min(100, Math.round((monthRev/target)*100)), color: '#00E396', label: 'Target' }
+  ];
+
+  metrics.forEach((m, i) => {
+    if(analyticsCharts['rad'+i]) analyticsCharts['rad'+i].destroy();
+    const opt = {
+      series: [m.pct],
+      chart: { type: 'radialBar', height: 180, sparkline: { enabled: true } },
+      plotOptions: {
+        radialBar: {
+          startAngle: -90,
+          endAngle: 90,
+          track: { background: 'rgba(255,255,255,0.05)', strokeWidth: '100%', margin: 5, dropShadow: { enabled: true, top: 0, left: 0, blur: 3, opacity: 0.5 } },
+          dataLabels: {
+            name: { show: false },
+            value: { offsetY: 0, fontSize: '24px', fontWeight: 800, color: m.color, formatter: (v) => v + '%' }
+          }
+        }
+      },
+      colors: [m.color],
+      stroke: { lineCap: 'round' }
+    };
+    analyticsCharts['rad'+i] = new ApexCharts(document.querySelector("#" + m.id), opt);
+    analyticsCharts['rad'+i].render();
+  });
+}
+
+// 1. Trends Line Chart (Area Glowing)
 function renderTrendsChart(orders, common) {
   const daily = {};
   orders.forEach(o => {
@@ -4067,171 +4105,162 @@ function renderTrendsChart(orders, common) {
   const sortedDates = Object.keys(daily).sort();
   const data = sortedDates.map(d => daily[d]);
   
-  // Forecast moving average
-  const forecast = [];
-  let sum=0;
-  data.forEach((v, i) => {
-    sum += v;
-    forecast.push(Math.round(sum/(i+1)));
-  });
-
   if(analyticsCharts['trends']) analyticsCharts['trends'].destroy();
   const opt = {
     ...common,
     series: [
-      { name: 'Revenue', type: 'area', data: data },
-      { name: 'Moving Avg', type: 'line', data: forecast }
+      { name: 'Revenue', type: 'area', data: data }
     ],
-    chart: { ...common.chart, height: 300, type: 'line' },
-    stroke: { curve: 'smooth', width: [0, 3] },
-    fill: { type: ['gradient', 'solid'], gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1 } },
-    colors: ['#3b82f6', '#f59e0b'],
-    xaxis: { categories: sortedDates.map(d => d.slice(5)) },
+    chart: { ...common.chart, type: 'area', height: 350 },
+    colors: ['#FF2A85'],
+    stroke: { curve: 'smooth', width: 3 },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.7,
+        opacityTo: 0.05,
+        stops: [0, 90, 100]
+      }
+    },
     dataLabels: { enabled: false },
-    yaxis: { labels: { formatter: v => '₹'+fmtMoneyCompact(v) } }
+    xaxis: { categories: sortedDates.map(d=>d.substring(5)), labels: { style: { colors: '#718096' } } },
+    yaxis: { labels: { formatter: (v) => '₹' + (v/1000).toFixed(1) + 'k', style: { colors: '#718096' } } }
   };
   analyticsCharts['trends'] = new ApexCharts(document.querySelector("#chart-line-trends"), opt);
   analyticsCharts['trends'].render();
 }
 
-// 2. Salesmen Bar Chart
-function renderSalesmenChart(orders, common) {
-  const smData = {};
+// 2. Network Topology (Bubble Chart mapping Salesman -> Retailer -> Order Size)
+function renderNetworkTopology(orders, common) {
+  // Bubble series: each salesman is a series, each bubble is a retailer
+  const seriesMap = {}; // by salesman
   orders.forEach(o => {
-    const sm = o.salesmen?.name || 'Admin';
-    if(!smData[sm]) smData[sm] = 0;
-    smData[sm] += (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    const sm = o.salesmen?.name || 'Unassigned';
+    const rt = o.retailers?.name || 'Unknown';
+    if(!seriesMap[sm]) seriesMap[sm] = {};
+    if(!seriesMap[sm][rt]) seriesMap[sm][rt] = { count: 0, val: 0, cr: Number(o.retailers?.credit_limit||0) };
+    seriesMap[sm][rt].count++;
+    seriesMap[sm][rt].val += (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
   });
-  
-  const sorted = Object.entries(smData).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  
-  if(analyticsCharts['salesmen']) analyticsCharts['salesmen'].destroy();
+
+  const series = Object.keys(seriesMap).map(sm => {
+    return {
+      name: sm,
+      data: Object.keys(seriesMap[sm]).map(rt => {
+        const d = seriesMap[sm][rt];
+        return [ Math.min(d.cr, 500000), d.count, d.val/1000 ]; // x: credit, y: orders, z: value (bubble size)
+      })
+    };
+  });
+
+  if(analyticsCharts['scatter']) analyticsCharts['scatter'].destroy();
   const opt = {
     ...common,
-    series: [{ name: 'Revenue', data: sorted.map(i=>i[1]) }],
-    chart: { ...common.chart, type: 'bar', height: 250 },
-    plotOptions: { bar: { horizontal: false, borderRadius: 4, columnWidth: '55%' } },
-    colors: ['#10b981'],
+    series: series,
+    chart: { ...common.chart, type: 'bubble', height: 320 },
     dataLabels: { enabled: false },
-    xaxis: { categories: sorted.map(i=>i[0]) },
-    yaxis: { labels: { formatter: v => '₹'+fmtMoneyCompact(v) } }
+    fill: { opacity: 0.8 },
+    xaxis: { title: { text: 'Retailer Credit Limit' }, labels: { formatter: v => '₹'+(v/1000)+'k' } },
+    yaxis: { title: { text: 'Order Frequency' } },
+    theme: { palette: 'palette1' }
   };
-  analyticsCharts['salesmen'] = new ApexCharts(document.querySelector("#chart-bar-salesmen"), opt);
-  analyticsCharts['salesmen'].render();
+  analyticsCharts['scatter'] = new ApexCharts(document.querySelector("#chart-scatter-credit"), opt);
+  analyticsCharts['scatter'].render();
 }
 
-// 3. Payment Donut
-function renderPaymentDonut(orders, common) {
-  let cash=0, credit=0, bill=0;
-  orders.forEach(o => {
-    const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
-    if(o.payment_term==='cash') cash += tot;
-    else if(o.payment_term==='credit') {
-      if(o.credit_period_days <= 1) bill += tot;
-      else credit += tot;
-    }
-  });
-  
-  if(analyticsCharts['payment']) analyticsCharts['payment'].destroy();
-  const opt = {
-    ...common,
-    series: [cash, bill, credit],
-    labels: ['Cash/UPI', 'Bill-to-Bill', 'Credit'],
-    chart: { ...common.chart, type: 'donut', height: 250 },
-    colors: ['#22c55e', '#3b82f6', '#f43f5e'],
-    plotOptions: { pie: { donut: { size: '65%' } } },
-    dataLabels: { enabled: false },
-    legend: { position: 'bottom' }
-  };
-  analyticsCharts['payment'] = new ApexCharts(document.querySelector("#chart-donut-payment"), opt);
-  analyticsCharts['payment'].render();
-}
-
-// 4. Treemap (Company)
+// 3. Treemap (Brand Penetration)
 function renderTreemap(orders, common) {
-  const companies = {};
+  const brands = {};
   orders.forEach(o => {
     (o.order_items||[]).forEach(i => {
-      const c = i.products?.companies?.name || 'Unknown';
-      if(!companies[c]) companies[c] = 0;
-      companies[c] += ((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0));
+      const comp = i.products?.companies?.name || i.products?.name?.split(' ')[0] || 'Unknown';
+      brands[comp] = (brands[comp]||0) + ((parseFloat(i.quantity)||0) * (parseFloat(i.rate)||0));
     });
   });
-  
-  const data = Object.entries(companies).map(([x,y]) => ({x,y})).sort((a,b)=>b.y-a.y);
-  
+
+  const data = Object.keys(brands).map(k => ({ x: k, y: Math.round(brands[k]) })).sort((a,b)=>b.y - a.y).slice(0, 15);
+
   if(analyticsCharts['treemap']) analyticsCharts['treemap'].destroy();
   const opt = {
     ...common,
     series: [{ data }],
-    chart: { ...common.chart, type: 'treemap', height: 350 },
-    colors: ['#6366f1'],
-    dataLabels: { formatter: function(text, op) { return [text, '₹'+fmtMoneyCompact(op.value)] } }
+    chart: { ...common.chart, type: 'treemap', height: 320 },
+    colors: ['#8E2DE2'],
+    plotOptions: {
+      treemap: {
+        enableShades: true,
+        shadeIntensity: 0.5,
+        reverseNegativeShade: true,
+        colorScale: { ranges: [{ from: 0, to: 9999999, color: '#8E2DE2' }] }
+      }
+    }
   };
   analyticsCharts['treemap'] = new ApexCharts(document.querySelector("#chart-treemap-company"), opt);
   analyticsCharts['treemap'].render();
 }
 
-// 5. Heatmap (Product across Areas)
+// 4. Heatmap
 function renderHeatmap(orders, common) {
-  const map = {};
-  const products = new Set();
-  
+  const areaProduct = {};
   orders.forEach(o => {
-    const area = o.retailers?.area || 'Unknown';
-    if(!map[area]) map[area] = {};
+    const a = o.retailers?.area || 'Unknown';
+    if(!areaProduct[a]) areaProduct[a] = {};
     (o.order_items||[]).forEach(i => {
-      const p = (i.products?.name || 'Unknown').substring(0,15);
-      products.add(p);
-      if(!map[area][p]) map[area][p] = 0;
-      map[area][p] += ((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0));
+      const p = i.products?.name?.substring(0, 15) || 'Item';
+      areaProduct[a][p] = (areaProduct[a][p]||0) + (parseFloat(i.quantity)||0);
     });
   });
-  
-  const topProducts = Array.from(products).slice(0, 10);
-  const series = Object.keys(map).slice(0, 8).map(area => {
-    return {
-      name: area,
-      data: topProducts.map(p => ({ x: p, y: map[area][p] || 0 }))
-    };
-  });
-  
+
+  const areas = Object.keys(areaProduct).slice(0,6);
+  const allProds = new Set();
+  areas.forEach(a => Object.keys(areaProduct[a]).forEach(p => allProds.add(p)));
+  const topProds = Array.from(allProds).slice(0, 8);
+
+  const series = areas.map(a => ({
+    name: a,
+    data: topProds.map(p => ({ x: p, y: areaProduct[a][p] || 0 }))
+  }));
+
   if(analyticsCharts['heatmap']) analyticsCharts['heatmap'].destroy();
   const opt = {
     ...common,
     series: series,
-    chart: { ...common.chart, type: 'heatmap', height: 350 },
-    plotOptions: { heatmap: { colorScale: { ranges: [{ from:0, to:0, color:'#1f2937' }, { from:1, to:1000000, color:'#8b5cf6' }] } } },
+    chart: { ...common.chart, type: 'heatmap', height: 320 },
+    colors: ['#4FACFE'],
     dataLabels: { enabled: false }
   };
   analyticsCharts['heatmap'] = new ApexCharts(document.querySelector("#chart-heatmap-products"), opt);
   analyticsCharts['heatmap'].render();
 }
 
-// 6. Scatter (Order Size vs Credit)
-function renderScatter(orders, common) {
-  const data = orders.filter(o => o.payment_term === 'credit' && o.credit_period_days > 1).map(o => {
-    const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
-    return [tot, o.credit_period_days]; // [x,y] = [Size, Days]
+// 5. Salesmen Bar Chart
+function renderSalesmenChart(orders, common) {
+  const sm = {};
+  orders.forEach(o => {
+    const n = o.salesmen?.name || 'Unassigned';
+    sm[n] = (sm[n]||0) + (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
   });
-  
-  if(analyticsCharts['scatter']) analyticsCharts['scatter'].destroy();
+  const data = Object.keys(sm).map(k => ({ x: k, y: Math.round(sm[k]) })).sort((a,b)=>b.y - a.y).slice(0, 7);
+
+  if(analyticsCharts['salesmen']) analyticsCharts['salesmen'].destroy();
   const opt = {
     ...common,
-    series: [{ name: 'Orders', data }],
-    chart: { ...common.chart, type: 'scatter', height: 250 },
-    colors: ['#ec4899'],
-    xaxis: { title: { text: 'Order Size (₹)' }, labels: { formatter: v => fmtMoneyCompact(v) } },
-    yaxis: { title: { text: 'Credit Days' } }
+    series: [{ name: 'Revenue', data: data.map(d=>d.y) }],
+    chart: { ...common.chart, type: 'bar', height: 300 },
+    colors: ['#00E396'],
+    plotOptions: { bar: { borderRadius: 4, horizontal: true } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: data.map(d=>d.x) },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.8, opacityTo: 0.3, stops: [0, 90, 100] } }
   };
-  analyticsCharts['scatter'] = new ApexCharts(document.querySelector("#chart-scatter-credit"), opt);
-  analyticsCharts['scatter'].render();
+  analyticsCharts['salesmen'] = new ApexCharts(document.querySelector("#chart-bar-salesmen"), opt);
+  analyticsCharts['salesmen'].render();
 }
 
-// 7. Histogram (Order Size Distribution)
+// 6. Histogram
 function renderHistogram(orders, common) {
   const bins = { '0-2k':0, '2k-5k':0, '5k-10k':0, '10k-25k':0, '25k+':0 };
-  
   orders.forEach(o => {
     const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
     if(tot < 2000) bins['0-2k']++;
@@ -4240,17 +4269,17 @@ function renderHistogram(orders, common) {
     else if(tot < 25000) bins['10k-25k']++;
     else bins['25k+']++;
   });
-  
+
   if(analyticsCharts['hist']) analyticsCharts['hist'].destroy();
   const opt = {
     ...common,
-    series: [{ name: 'Number of Orders', data: Object.values(bins) }],
+    series: [{ name: 'Orders', data: Object.values(bins) }],
     chart: { ...common.chart, type: 'bar', height: 250 },
-    plotOptions: { bar: { borderRadius: 4, columnWidth: '95%' } },
-    colors: ['#06b6d4'],
-    dataLabels: { enabled: true },
-    xaxis: { categories: Object.keys(bins), title: { text: 'Order Value Range (₹)' } },
-    yaxis: { title: { text: 'Frequency' } }
+    colors: ['#FEB019'],
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '80%' } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: Object.keys(bins) },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.8, opacityTo: 0.3, stops: [0, 90, 100] } }
   };
   analyticsCharts['hist'] = new ApexCharts(document.querySelector("#chart-hist-orders"), opt);
   analyticsCharts['hist'].render();

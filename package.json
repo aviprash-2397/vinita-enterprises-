@@ -1,0 +1,16 @@
+{
+  "name": "files",
+  "version": "1.0.0",
+  "description": "A complete Progressive Web App (PWA) for wholesale order management. Once deployed, your salesmen install it from their browser and it behaves like a native Android/iPhone app — own icon, fullscreen, works offline.",
+  "main": "add_areas.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
