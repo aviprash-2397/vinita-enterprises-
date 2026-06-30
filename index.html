@@ -14,7 +14,50 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <title>Vinita Enterprises</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<div id="forecast-modal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+  <div style="background:#1C1C1E; border-radius:24px; padding:32px; width:100%; max-width:700px; box-shadow:0 20px 60px rgba(0,0,0,0.6); position:relative; border:1px solid #333; max-height:90vh; overflow-y:auto;">
+    <button onclick="document.getElementById('forecast-modal').style.display='none'" style="position:absolute; top:20px; right:20px; background:none; border:none; color:#aaa; font-size:24px; cursor:pointer;">×</button>
+    <div style="font-size:28px; font-weight:800; margin-bottom:8px; background: -webkit-linear-gradient(45deg, #00E396, #008FFB); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Predictive Demand Forecast</div>
+    <div style="color:var(--mu); margin-bottom:24px; font-size:14px;">Select parameters to generate an AI-driven projection for the next 30 days based on historical velocity.</div>
+    
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px;">
+        <div>
+            <label style="display:block; font-size:12px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:8px;">Retailer / Party</label>
+            <select id="forecast-party" style="width:100%; padding:12px; border-radius:12px; background:#2C2C2E; color:#fff; border:1px solid #444; outline:none; font-size:14px;">
+                <option value="all">All Retailers</option>
+            </select>
+        </div>
+        <div>
+            <label style="display:block; font-size:12px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:8px;">Area / Region</label>
+            <select id="forecast-area" style="width:100%; padding:12px; border-radius:12px; background:#2C2C2E; color:#fff; border:1px solid #444; outline:none; font-size:14px;">
+                <option value="all">All Areas</option>
+            </select>
+        </div>
+    </div>
+
+    <button onclick="runForecast()" class="btn btn-or" style="width:100%; padding:14px; font-size:16px; border-radius:12px; font-weight:700; margin-bottom:24px; box-shadow:0 8px 25px rgba(255, 138, 0, 0.4);">Generate Projection</button>
+    
+    <div id="forecast-loading" style="display:none; text-align:center; padding:40px; color:#00E396; font-weight:600;">Processing historical matrices...</div>
+    
+    <div id="forecast-results" style="display:none;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+            <div style="background:#2C2C2E; padding:16px; border-radius:16px; text-align:center;">
+                <div style="font-size:12px; color:#aaa; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">Expected Vol. (30d)</div>
+                <div id="forecast-val" style="font-size:32px; font-weight:800; color:#00E396; margin-top:4px;">?0</div>
+            </div>
+            <div style="background:#2C2C2E; padding:16px; border-radius:16px; text-align:center;">
+                <div style="font-size:12px; color:#aaa; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">Growth Trend</div>
+                <div id="forecast-trend" style="font-size:32px; font-weight:800; color:#FEB019; margin-top:4px;">+0%</div>
+            </div>
+        </div>
+        <div id="chart-forecast-detailed" style="background:#222; border-radius:16px; padding:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -99,7 +142,7 @@ textarea{resize:none;height:76px}
 .lt em{font-style:italic;color:var(--or-d)}
 .ls{color:var(--mu);margin-bottom:40px;font-size:14px;line-height:1.65;text-align:center;font-weight:450;max-width:300px}
 .rc{width:100%;display:flex;flex-direction:column;gap:12px}
-.rcard{background:var(--surface);border-radius:var(--r-xl);padding:22px;cursor:pointer;display:flex;align-items:center;gap:16px;box-shadow:var(--sh-md);border:.5px solid var(--bd);transition:all .2s;text-align:left;position:relative;overflow:hidden}
+.rcard{background:var(--surface);border-radius:var(--r-xl);padding:22px;cursor:pointer;display:flex;align-items:center;gap:16px;box-shadow:var(--sh-md);border:.5px solid var(--bd);transition:all .2s;text-align:left;position:relative;overflow:hidden;box-sizing:border-box;}
 .rcard::before{content:'';position:absolute;top:0;right:0;width:120px;height:120px;background:var(--or-grad-soft);border-radius:50%;transform:translate(40px,-40px);opacity:.6;pointer-events:none}
 .rcard:active{transform:translateY(-2px);box-shadow:var(--sh-lg);border-color:var(--or)}
 .rcard-icon{width:54px;height:54px;border-radius:16px;background:var(--or-grad);display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:var(--sh-or-sm);flex-shrink:0;position:relative;z-index:1}
@@ -281,6 +324,42 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
 .cart-total-banner{background:var(--or-grad);color:#fff;border-radius:var(--r-lg);padding:14px 18px;margin:8px 0 14px;display:flex;justify-content:space-between;align-items:center;box-shadow:var(--sh-or-sm)}
 .cart-total-banner-label{font-size:11px;font-weight:600;opacity:.9;text-transform:uppercase;letter-spacing:.1em}
 .cart-total-banner-value{font-family:var(--font-serif);font-size:30px;font-weight:400;letter-spacing:-0.02em;line-height:1}
+
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  box-shadow: var(--sh-md);
+  border: 1px solid var(--bd);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+.chart-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+  border-color: var(--or);
+}
+.chart-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-card::before {
+  content:'';
+  position:absolute;
+  top:0; right:0;
+  width:150px; height:150px;
+  background: radial-gradient(circle, rgba(255,138,0,0.1) 0%, rgba(0,0,0,0) 70%);
+  pointer-events:none;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <style>
@@ -337,6 +416,42 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
 .oc:active { transform:scale(.98);box-shadow:var(--sh-xs); }
 .card { border-radius:16px;box-shadow:var(--sh-sm);border:1px solid var(--bd); }
 </style>
+
+  <style>
+    /* Analytics Redesign Styles */
+    .glass-panel {
+      background: rgba(20, 25, 45, 0.45) !important;
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+      border-radius: 16px !important;
+    }
+    .glass-title {
+      color: #FFF !important;
+      font-weight: 700 !important;
+      font-size: 14px !important;
+      letter-spacing: 0.02em;
+    }
+    .apexcharts-tooltip {
+      background: rgba(15, 20, 35, 0.9) !important;
+      backdrop-filter: blur(8px) !important;
+      border: 1px solid rgba(0, 242, 254, 0.3) !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+      color: #fff !important;
+    }
+    .apexcharts-tooltip-title {
+      background: rgba(0,0,0,0.3) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+    .apexcharts-text tspan {
+      font-family: 'Inter', sans-serif !important;
+    }
+    @media(max-width: 800px){
+      .radial-stats-grid { grid-template-columns: 1fr 1fr !important; }
+      .analytics-row-2 { grid-template-columns: 1fr !important; }
+    }
+  </style>
 </head>
 <body>
 <div id="toast"></div>
@@ -402,6 +517,7 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
   <div class="hd">
     <button class="hd-back" onclick="salesmanLogout()">←</button>
     <div class="hd-title"><div id="sh-greeting" style="display:flex;align-items:center;gap:6px">Welcome <div id="gps-indicator" style="font-size:10px;background:#22c55e;color:#fff;padding:2px 6px;border-radius:10px;font-weight:600;display:none">📍 Live</div></div><div class="hd-sub" id="sh-subtitle">Today's overview</div></div>
+    <button class="hd-btn" style="margin-right:8px" onclick="loadSalesmanCollections()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg>Collect</button>
     <button class="hd-btn" onclick="gotoPage('pg-order-history')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>History</button>
   </div>
   <div class="ct" style="padding-bottom:120px">
@@ -422,6 +538,27 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
   </div>
   <div class="bot-bar">
     <button onclick="gotoPage('pg-select-retailer')" class="bb-btn bb-or"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M9 17H6V8a2 2 0 0 1 2-2h2"/><path d="M14 6h3l4 6v5h-3"/></svg> Take New Order</button>
+  </div>
+</div>
+
+<div id="pg-salesman-collections" class="pg">
+  <div class="hd">
+    <button class="hd-back" onclick="gotoPage('pg-salesman-home')">←</button>
+    <div class="hd-title"><div>My Collections</div><div class="hd-sub">Summary & History</div></div>
+  </div>
+  <div class="ct">
+    <div id="sm-col-stats" class="sg" style="margin-bottom:16px"></div>
+    <div class="filter-label">Date</div>
+    <div class="fc" id="sm-col-date-filters">
+      <div class="chip active" data-key="today" onclick="filterSmCollectionsByDate('today',this)">Today</div>
+      <div class="chip" data-key="yesterday" onclick="filterSmCollectionsByDate('yesterday',this)">Yesterday</div>
+      <div class="chip" data-key="thisWeek" onclick="filterSmCollectionsByDate('thisWeek',this)">This Week</div>
+      <div class="chip" data-key="last7" onclick="filterSmCollectionsByDate('last7',this)">Last 7 Days</div>
+      <div class="chip" data-key="thisMonth" onclick="filterSmCollectionsByDate('thisMonth',this)">This Month</div>
+      <div class="chip" data-key="all" onclick="filterSmCollectionsByDate('all',this)">All Time</div>
+    </div>
+    <div id="sm-col-summary"></div>
+    <div id="sm-collections-list"></div>
   </div>
 </div>
 
@@ -578,7 +715,7 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
     <div class="tab active" onclick="switchAdminTab('orders',this)">Orders</div>
     <div class="tab" onclick="switchAdminTab('collections',this)">Collections</div>
     <div class="tab" onclick="switchAdminTab('reports',this)">Reports</div>
-    <div class="tab" onclick="switchAdminTab('forecasts',this)">Forecasts</div>
+    <div class="tab" onclick="switchAdminTab('analytics',this)">Analytics</div>
     <div class="tab" onclick="switchAdminTab('manage',this)">Manage</div>
   </div>
   <div id="at-orders" class="ct">
@@ -631,8 +768,105 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
     <div id="collections-list"></div>
   </div>
   <div id="at-reports" class="ct" style="display:none"><div id="reports-content"></div></div>
-  <div id="at-forecasts" class="ct" style="display:none"><div id="forecasts-content" style="padding:16px 0"></div></div>
-  <div id="at-manage" class="ct" style="display:none"><div id="manage-content"></div></div>
+    <div id="at-analytics" class="ct" style="display:none; padding-bottom:100px; background:#0B0E14; position:relative; overflow:hidden;">
+  <!-- Deep Space World Map Background SVG -->
+  <div style="position:absolute; top:0; left:0; right:0; bottom:0; opacity:0.04; pointer-events:none; background-image:url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 1000 500\'><path fill=\'%23FFFFFF\' d=\'M200 150 Q 250 100 300 150 T 400 150 T 500 150 T 600 150 T 700 150 T 800 150\' stroke=\'%23FFFFFF\' stroke-width=\'2\' fill-opacity=\'0.1\'/></svg>'); background-size:cover; background-position:center; z-index:0;"></div>
+  
+  <div style="position:relative; z-index:1;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+      <div style="font-size:28px; font-weight:800; background: -webkit-linear-gradient(45deg, #00F2FE, #4FACFE); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing:-0.5px;">Analytics & Insights</div>
+      <button class="btn" style="background:rgba(0,242,254,0.1); color:#00F2FE; border:1px solid rgba(0,242,254,0.3); border-radius:30px; box-shadow:0 0 15px rgba(0,242,254,0.1); font-weight:600; padding:8px 20px; transition:all 0.3s;" onclick="openForecastModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px; margin-right:6px;"><path d="M2 12h4l3-9 5 18 3-9h5"/></svg>
+        Predict Demand
+      </button>
+    </div>
+    
+    <div class="filter-label" style="color:var(--mu); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; font-size:11px;">Timeframe</div>
+    <div class="fc" id="analytics-date-filters" style="margin-bottom:24px">
+      <div class="chip" data-key="today" onclick="filterAnalytics('today',this)">Today</div>
+      <div class="chip" data-key="thisWeek" onclick="filterAnalytics('thisWeek',this)">This Week</div>
+      <div class="chip active" data-key="thisMonth" onclick="filterAnalytics('thisMonth',this)">This Month</div>
+      <div class="chip" data-key="lastMonth" onclick="filterAnalytics('lastMonth',this)">Last Month</div>
+    </div>
+
+    <div id="analytics-loading" style="display:none; color:#00F2FE; font-weight:600; padding:20px; text-align:center; background:rgba(11,14,20,0.8); backdrop-filter:blur(10px); border-radius:12px; margin-bottom:20px; border:1px solid rgba(0,242,254,0.2); box-shadow:0 0 20px rgba(0,242,254,0.1);">
+      <div style="display:inline-block; width:20px; height:20px; border:2px solid #00F2FE; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle; margin-right:10px;"></div>
+      Loading Deep Analytics...
+    </div>
+    
+    <div id="analytics-error" style="display:none; color:#FF2A85; font-weight:600; padding:20px; text-align:center; background:rgba(255,42,133,0.1); border-radius:12px; margin-bottom:20px; border:1px solid rgba(255,42,133,0.3);"></div>
+
+    <div id="analytics-dashboard-content" style="display:none;">
+      
+      <!-- Top Row: Radial Statistic Graphs -->
+      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:24px;" class="radial-stats-grid">
+        <!-- Radial 1 -->
+        <div class="chart-card glass-panel">
+          <div class="chart-title glass-title">Statistic Graph<br><span style="font-size:10px; color:#A0AEC0; font-weight:400;">Delivery Success Rate</span></div>
+          <div id="chart-radial-1" style="min-height:120px; display:flex; justify-content:center; align-items:center;"></div>
+        </div>
+        <!-- Radial 2 -->
+        <div class="chart-card glass-panel">
+          <div class="chart-title glass-title">Statistic Graph<br><span style="font-size:10px; color:#A0AEC0; font-weight:400;">Payment Collection</span></div>
+          <div id="chart-radial-2" style="min-height:120px; display:flex; justify-content:center; align-items:center;"></div>
+        </div>
+        <!-- Radial 3 -->
+        <div class="chart-card glass-panel">
+          <div class="chart-title glass-title">Statistic Graph<br><span style="font-size:10px; color:#A0AEC0; font-weight:400;">Active Retailers</span></div>
+          <div id="chart-radial-3" style="min-height:120px; display:flex; justify-content:center; align-items:center;"></div>
+        </div>
+        <!-- Radial 4 -->
+        <div class="chart-card glass-panel">
+          <div class="chart-title glass-title">Statistic Graph<br><span style="font-size:10px; color:#A0AEC0; font-weight:400;">Monthly Target Hit</span></div>
+          <div id="chart-radial-4" style="min-height:120px; display:flex; justify-content:center; align-items:center;"></div>
+        </div>
+      </div>
+
+      <!-- Main Area Chart: Trends -->
+      <div class="chart-card glass-panel" style="margin-bottom:24px; padding:24px;">
+        <div class="chart-title glass-title" style="margin-bottom:10px;">
+          <div style="width:12px; height:12px; border-radius:50%; background:#FF2A85; box-shadow:0 0 10px #FF2A85;"></div>
+          Sales Velocity & Revenue Trends
+        </div>
+        <div id="chart-line-trends"></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:24px; margin-bottom:24px;" class="analytics-row-2">
+        <!-- Node Graph replacement (Scatter/Bubble) -->
+        <div class="chart-card glass-panel" style="padding:24px;">
+          <div class="chart-title glass-title"><div style="width:10px; height:10px; border-radius:50%; background:#00F2FE; box-shadow:0 0 10px #00F2FE;"></div>Network Topology (Order Size vs Credit Cycle)</div>
+          <div id="chart-scatter-credit" style="min-height:300px;"></div>
+        </div>
+        <!-- Treemap / Heatmap Hybrid -->
+        <div class="chart-card glass-panel" style="padding:24px; overflow-x:auto;">
+          <div class="chart-title glass-title"><div style="width:10px; height:10px; border-radius:50%; background:#8E2DE2; box-shadow:0 0 10px #8E2DE2;"></div>Brand Penetration</div>
+          <div id="chart-treemap-company" style="min-width:300px;"></div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:24px; margin-bottom:24px;">
+        <!-- Heatmap -->
+        <div class="chart-card glass-panel" style="padding:24px; overflow-x:auto;">
+          <div class="chart-title glass-title"><div style="width:10px; height:10px; border-radius:50%; background:#4FACFE; box-shadow:0 0 10px #4FACFE;"></div>Regional Policy Heatmap</div>
+          <div id="chart-heatmap-products" style="min-width:300px;"></div>
+        </div>
+        <!-- Bar Chart -->
+        <div class="chart-card glass-panel" style="padding:24px;">
+          <div class="chart-title glass-title"><div style="width:10px; height:10px; border-radius:50%; background:#00E396; box-shadow:0 0 10px #00E396;"></div>Top Performers (Salesmen)</div>
+          <div id="chart-bar-salesmen"></div>
+        </div>
+      </div>
+
+      <!-- Histogram -->
+      <div class="chart-card glass-panel" style="padding:24px; margin-bottom:24px;">
+        <div class="chart-title glass-title"><div style="width:10px; height:10px; border-radius:50%; background:#FEB019; box-shadow:0 0 10px #FEB019;"></div>Revenue Distribution (Hist)</div>
+        <div id="chart-hist-orders"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<div id="at-manage" class="ct" style="display:none"><div id="manage-content"></div></div>
 </div>
 
 <!-- Floating calculator -->
@@ -739,19 +973,9 @@ body.offline .hd{padding-top:max(14px,calc(env(safe-area-inset-top) + 30px))}
     
     <div class="bi-chart-card" id="bi-view-2" style="display:none">
       <div style="font-weight:600;margin-bottom:20px;font-size:16px;color:#fff">Top Products by Territory (Revenue)</div>
-      <div id="chart-product-area"></div>
-    </div>
-    
-    <div class="bi-chart-card" id="bi-view-3" style="display:none">
-      <div style="font-weight:600;margin-bottom:20px;font-size:16px;color:#fff">Debt vs Paid Cash by Area</div>
-      <div id="chart-regional-debt"></div>
-    </div>
-  </div>
-</div>
-
 <script>
-const SUPABASE_URL='https://icboixkgnqkprljbledd.supabase.co';
-const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljYm9peGtnbnFrcHJsamJsZWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTgyNzIsImV4cCI6MjA5NDA5NDI3Mn0.4dg7sy_kMU2EJlqN1qzNodPAsb2VRLJBCGVtU5cgWl4';
+const SUPABASE_URL='https://rryibbqgeqtitdoeaxsx.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyeWliYnFnZXF0aXRkb2VheHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyODcwMjgsImV4cCI6MjA5Nzg2MzAyOH0.x3x3qBPl0cZ4XpL8VJHD3Fo7ilHC1I-nneoQGnLaM2U';
 const ADMIN_PW='shyam2026';
 const WA_NUM='919973478456';
 const STORAGE_KEY='vinita_state_v2';
@@ -1071,11 +1295,20 @@ async function loadSalesmanHome(){
   const yestRev=yestOrders.reduce((s,o)=>s+orderTotal(o),0);
   const monthRev=monthOrders.reduce((s,o)=>s+orderTotal(o),0);
   const unpaidCount=all.filter(o=>o.status!=='cancelled'&&(o.payments?.[0]?.status||'unpaid')!=='paid').length;
-  const undelivered=all.filter(o=>['placed','confirmed','dispatched'].includes(o.status||'placed')).length;
+  
+  // Fetch ALL undelivered orders across the company for salesmen acting as delivery agents
+  const {data: globalUndelivData} = await db.from('orders')
+    .select('*, retailers(id,name,contact,area,outstanding,credit_limit), order_items(quantity,bonus_quantity,rate,product_id,products(name,sku)), payments(status), salesmen!orders_salesman_id_fkey(name)')
+    .in('status', ['placed', 'confirmed', 'dispatched'])
+    .order('created_at',{ascending:false})
+    .limit(300);
+  
+  const globalUndelivered = globalUndelivData || [];
+  const undelivered = globalUndelivered.length;
 
   // Cache filtered lists for the salesman orders page to pick up
   S.salesmanStatViews={today:todayOrders,yesterday:yestOrders,month:monthOrders,
-    undelivered:all.filter(o=>['placed','confirmed','dispatched'].includes(o.status||'placed')),
+    undelivered:globalUndelivered,
     unpaid:all.filter(o=>o.status!=='cancelled'&&(o.payments?.[0]?.status||'unpaid')!=='paid')};
 
   document.getElementById('sh-stats').innerHTML=`
@@ -1851,7 +2084,7 @@ async function loadSalesmanOrders(){
   }
   if(!data?.length){el.innerHTML='<div class="empty"><div class="ei"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div><div class="empty-title">No orders here</div><div class="empty-sub">'+esc(S.salesmanFilter?'No '+S.salesmanFilter.label.toLowerCase()+' orders right now':'Your placed orders will show up here.')+'</div></div>';return;}
   el.innerHTML=data.map(o=>{
-    const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));
+    const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));
     const status=o.status||'placed';
     return`<div class="oc" style="border-radius:18px;border:1px solid var(--bd);box-shadow:var(--sh-sm);margin-bottom:16px;padding:18px">
       <div class="oh" style="cursor:pointer;border-bottom:1px dashed var(--bd);padding-bottom:14px;margin-bottom:14px;align-items:center" onclick="openSalesmanOrderDetail('${o.id}')">
@@ -1888,7 +2121,7 @@ async function openSalesmanOrderDetail(orderId){
   const{data:o,error}=await db.from('orders').select('*, retailers(id,name,area,contact,outstanding,credit_limit), salesmen!orders_salesman_id_fkey(name), order_items(quantity,bonus_quantity,rate,products(name,sku,pack_size,mrp)), payments(status)').eq('id',orderId).single();
   if(error||!o){toast('Could not load order');return;}
   const status=o.status||'placed';
-  const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));
+  const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));
   const paid=o.payments?.[0]?.status==='paid';
   const outstanding=Number(o.retailers?.outstanding||0);
   const limit=Number(o.retailers?.credit_limit||0);
@@ -1950,7 +2183,7 @@ function renderDeliveryModal(){
   const o = window._dlvOrder;
   const items = window._dlvItems;
   const tot = Math.round(items.reduce((s,i) => s + (i.checked ? (i.quantity * i.rate) : 0), 0));
-  const origTot = Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));
+  const origTot = Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));
   
   const itemsHtml = items.map((i, idx) => {
     const lineTot = i.quantity * i.rate;
@@ -2277,7 +2510,7 @@ async function resendWA(orderId){
   const{data:o}=await db.from('orders').select('*, retailers(name,area), salesmen!orders_salesman_id_fkey(name), order_items(quantity,bonus_quantity,rate,products(name,sku))').eq('id',orderId).single();
   if(!o)return;
   let tot=0;
-  const lines=(o.order_items||[]).map(i=>{const lt=i.quantity*(i.rate||0);tot+=lt;let l=`• ${i.products?.name} × ${i.quantity}`;if(i.bonus_quantity>0)l+=` (+${i.bonus_quantity} Free)`;l+=` @ ₹${i.rate||0} = ₹${lt.toFixed(2)}`;return l;}).join('\n');
+  const lines=(o.order_items||[]).map(i=>{const lt=(parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0);tot+=lt;let l=`• ${i.products?.name} × ${i.quantity}`;if(i.bonus_quantity>0)l+=` (+${i.bonus_quantity} Free)`;l+=` @ ₹${i.rate||0} = ₹${lt.toFixed(2)}`;return l;}).join('\n');
   const msg=encodeURIComponent(`*Order ${fmtOrd(o.order_number)}*\nVinita Enterprises\n${o.salesmen?.name}\n${o.retailers?.name}\n${fmtDate(o.order_date)}\n\n*Items:*\n${lines}\n\n*Total: ₹${tot.toFixed(2)}*\nPayment: ${o.payment_term==='cash'?'Cash':'Credit ('+o.credit_period_days+'d)'}${o.notes?'\nNotes: '+o.notes:''}`);
   window.open(`https://wa.me/${WA_NUM}?text=${msg}`,'_blank');
 }
@@ -2410,7 +2643,7 @@ function switchToCollectionsToday(){
 
 async function loadAdminOrders(opts={}){
   if(!opts.skipSkeleton)document.getElementById('admin-orders-list').innerHTML=skeletonList();
-  const{data,error}=await db.from('orders').select('*, retailers(name,area,contact,outstanding,credit_limit), salesmen!orders_salesman_id_fkey(name), order_items(quantity,bonus_quantity,rate,products(name,sku,mrp,pack_size,category,companies(name))), payments(id,status)').order('created_at',{ascending:false});
+  const{data,error}=await db.from('orders').select('*, retailers(name,area,contact,outstanding,credit_limit), salesmen!orders_salesman_id_fkey(name), order_items(quantity,bonus_quantity,rate,products(name,sku)), payments(id,status)').order('created_at',{ascending:false});
   if(error){
     console.error('loadAdminOrders error:',error);
     document.getElementById('admin-orders-list').innerHTML=`<div class="err-bar">Could not load orders: ${esc(error.message)}<br><br>If you see "column ... does not exist", run the latest database-update.sql in Supabase.</div>`;
@@ -2517,7 +2750,7 @@ function applyAdminFilters(){
 function renderDateSummary(orders,range){
   const el=document.getElementById('date-summary');if(!el)return;
   const total=orders.length;
-  const revenue=orders.reduce((s,o)=>s+(o.order_items||[]).reduce((ss,i)=>ss+(i.quantity*(i.rate||0)),0),0);
+  const revenue=orders.reduce((s,o)=>s+(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0),0);
   const unpaid=orders.filter(o=>o.payments?.[0]?.status!=='paid').length;
   el.innerHTML=`<div class="date-summary">
     <div class="ds-left">
@@ -2539,7 +2772,7 @@ function renderAdminOrders(orders){
   // Group orders by date when range covers multiple days; otherwise show flat list
   const showGroups=['thisWeek','last7','thisMonth','lastMonth','all','custom'].includes(S.dateFilter);
   const cardHtml=o=>{
-    const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));
+    const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));
     const status=o.status||'placed';
     const checked=S.selectedOrders&&S.selectedOrders.has(o.id)?'checked':'';
     return`<div class="oc" style="cursor:pointer;display:flex;align-items:flex-start;gap:12px">
@@ -2567,7 +2800,7 @@ function renderAdminOrders(orders){
   const yesterday=(()=>{const d=new Date();d.setDate(d.getDate()-1);return toYMD(d);})();
   el.innerHTML=sortedDates.map(date=>{
     const g=groups[date];
-    const dayRev=g.reduce((s,o)=>s+(o.order_items||[]).reduce((ss,i)=>ss+(i.quantity*(i.rate||0)),0),0);
+    const dayRev=g.reduce((s,o)=>s+(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0),0);
     let label;
     if(date===today)label=`<em>Today,</em> ${fmtDateShort(date)}`;
     else if(date===yesterday)label=`<em>Yesterday,</em> ${fmtDateShort(date)}`;
@@ -2586,7 +2819,7 @@ async function openOrderDetail(orderId){
   const{data:o}=await db.from('orders').select('*, retailers(name,area,contact), salesmen!orders_salesman_id_fkey(name), order_items(quantity,bonus_quantity,rate,products(name,sku)), payments(id,status,paid_on)').eq('id',orderId).single();
   if(!o)return;
   const status=o.status||'placed';
-  const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));
+  const tot=Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));
   const stepHtml=STATUSES.map((s,i)=>{const cur=STATUSES.indexOf(status);const cls=i<cur?'done':(i===cur?'current':'');return`<div class="status-step ${cls}">${statusLabel(s)}</div>${i<STATUSES.length-1?'<span class="status-arrow">→</span>':''}`;}).join('');
   const itemsHtml=(o.order_items||[]).map(i=>`<div class="oi-row"><span>${esc(i.products?.name||'')} (${esc(i.products?.sku||'')})</span><span>${i.quantity} pcs${i.bonus_quantity>0?' +'+i.bonus_quantity+' free':''} @ ₹${i.rate}</span></div>`).join('');
   document.getElementById('modal-title').textContent=fmtOrd(o.order_number);
@@ -2815,6 +3048,124 @@ async function loadCollections(){
   applyCollectionFilters();
 }
 
+// --- SALESMAN COLLECTIONS ---
+async function loadSalesmanCollections(){
+  gotoPage('pg-salesman-collections');
+  document.getElementById('sm-collections-list').innerHTML=skeletonList();
+  
+  // Fetch collections
+  const p1 = db.from('collections')
+    .select('*, retailers(name,area)')
+    .eq('salesman_id', S.salesman.id)
+    .order('collected_at',{ascending:false});
+    
+  // Fetch credit orders
+  const p2 = db.from('orders')
+    .select('*, retailers(name), order_items(quantity,rate)')
+    .eq('salesman_id', S.salesman.id)
+    .eq('status', 'delivered')
+    .eq('payment_term', 'credit');
+    
+  const [resCol, resOrd] = await Promise.all([p1, p2]);
+  
+  S.smCollections = resCol.data || [];
+  S.smCreditOrders = resOrd.data || [];
+  
+  // Overall Cash Stats
+  const today=toYMD(new Date());
+  const wkStart=(()=>{const m=new Date();const dow=m.getDay()||7;m.setDate(m.getDate()-(dow-1));m.setHours(0,0,0,0);return m;})();
+  const moStart=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+  const tot={today:0,week:0,month:0,all:0};
+  S.smCollections.forEach(c=>{
+    const d=new Date(c.collected_at);const amt=Number(c.amount||0);
+    tot.all+=amt;
+    if(d>=moStart)tot.month+=amt;
+    if(d>=wkStart)tot.week+=amt;
+    if(toYMD(d)===today)tot.today+=amt;
+  });
+  
+  document.getElementById('sm-col-stats').innerHTML=`
+    <div class="sc"><div class="sc-icon">${ico('cash',16)}</div><div class="sv" style="font-size:22px">${fmtMoneyCompact(tot.today)}</div><div class="sl">Today</div></div>
+    <div class="sc"><div class="sc-icon">${ico('chart',16)}</div><div class="sv" style="font-size:22px">${fmtMoneyCompact(tot.week)}</div><div class="sl">This Week</div></div>
+    <div class="sc"><div class="sc-icon">${ico('dollar',16)}</div><div class="sv" style="font-size:22px">${fmtMoneyCompact(tot.month)}</div><div class="sl">This Month</div></div>
+  `;
+  applySmCollectionFilters();
+}
+
+function filterSmCollectionsByDate(key,el){
+  document.querySelectorAll('#sm-col-date-filters .chip').forEach(c=>c.classList.remove('active'));
+  if(el)el.classList.add('active');
+  S.smColDateFilter=key;
+  applySmCollectionFilters();
+}
+
+function applySmCollectionFilters(){
+  const range=getDateRange(S.smColDateFilter||'today');
+  
+  // Filter cash
+  let cashArr=S.smCollections.filter(c=>{
+    if(!range.from&&!range.to)return true;
+    const d=toYMD(new Date(c.collected_at));
+    if(range.from&&d<range.from)return false;
+    if(range.to&&d>range.to)return false;
+    return true;
+  });
+  
+  // Filter credit
+  let creditArr=S.smCreditOrders.filter(o=>{
+    if(!range.from&&!range.to)return true;
+    const d=toYMD(new Date(o.delivery_date||o.order_date));
+    if(range.from&&d<range.from)return false;
+    if(range.to&&d>range.to)return false;
+    return true;
+  });
+
+  const totCash = cashArr.reduce((s,c)=>s+Number(c.amount||0),0);
+  const totCredit = creditArr.reduce((s,o)=>{
+    const ot=(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    return s+ot;
+  },0);
+
+  document.getElementById('sm-col-summary').innerHTML=`<div class="date-summary">
+    <div class="ds-left">
+      <div class="ds-range">${esc(range.label)}</div>
+      <div class="ds-revenue" style="font-size:20px">${fmtMoney(totCash+totCredit)}</div>
+      <div style="font-size:12px;color:var(--mu);margin-top:6px;font-weight:500">
+        <span style="margin-right:12px"><span style="color:#22c55e">Cash/UPI:</span> ${fmtMoney(totCash)}</span>
+        <span><span style="color:#f43f5e">Credit:</span> ${fmtMoney(totCredit)}</span>
+      </div>
+    </div>
+  </div>`;
+  
+  // Merge items for list
+  const listItems = [];
+  cashArr.forEach(c=>{
+    listItems.push({type:'cash', retailer:c.retailers?.name, amount:Number(c.amount), mode:c.mode, date:c.collected_at});
+  });
+  creditArr.forEach(o=>{
+    const ot=(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    listItems.push({type:'credit', retailer:o.retailers?.name, amount:ot, mode:'Credit ('+o.credit_period_days+'d)', date:o.delivery_date||o.order_date});
+  });
+  
+  listItems.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  
+  const el=document.getElementById('sm-collections-list');
+  if(!listItems.length){
+    el.innerHTML=`<div class="empty"><div class="ei">${ico('cash',24)}</div><div class="empty-title">No collections found</div></div>`;
+    return;
+  }
+  
+  el.innerHTML = listItems.map(i => `<div class="oc">
+    <div class="oh" style="margin-bottom:0">
+      <div>
+        <div style="font-weight:600;font-size:14px;color:var(--tx)">${esc(i.retailer)}</div>
+        <div class="om" style="margin-top:2px;text-transform:capitalize">${esc(i.mode)} · ${fmtDateShort(i.date)}</div>
+      </div>
+      <div style="font-weight:700;color:${i.type==='cash'?'#22c55e':'#f43f5e'}">${fmtMoney(i.amount)}</div>
+    </div>
+  </div>`).join('');
+}
+
 function filterCollectionsByDate(key,el){
   document.querySelectorAll('#col-date-filters .chip').forEach(c=>c.classList.remove('active'));
   if(el)el.classList.add('active');
@@ -2843,6 +3194,50 @@ function renderColSummary(rows,range){
   // By mode
   const byMode={};rows.forEach(r=>{byMode[r.mode]=(byMode[r.mode]||0)+Number(r.amount||0);});
   const modeList=Object.entries(byMode).sort((a,b)=>b[1]-a[1]);
+
+  // --- DAILY SALESMAN COLLECTION SUMMARY ---
+  // Group collections (cash/upi) by salesman
+  const smCash = {};
+  rows.forEach(c => {
+    if(!c.salesman_id) return;
+    if(!smCash[c.salesman_id]) smCash[c.salesman_id] = { name: c.salesmen?.name || 'Unknown', cash: 0, credit: 0, items: [] };
+    smCash[c.salesman_id].cash += Number(c.amount || 0);
+    smCash[c.salesman_id].items.push({ type: 'cash', retailer: c.retailers?.name, amount: Number(c.amount), mode: c.mode, date: c.collected_at });
+  });
+
+  // Group credit from orders (status='delivered', payment_term='credit') for the same date range
+  const creditOrders = (S.adminOrders||[]).filter(o => {
+    if(o.status !== 'delivered' || o.payment_term !== 'credit') return false;
+    if(!range.from && !range.to) return true;
+    const d = toYMD(new Date(o.delivery_date || o.order_date));
+    if(range.from && d < range.from) return false;
+    if(range.to && d > range.to) return false;
+    return true;
+  });
+
+  creditOrders.forEach(o => {
+    const sid = o.salesman_id;
+    if(!sid) return;
+    if(!smCash[sid]) smCash[sid] = { name: o.salesmen?.name || 'Unknown', cash: 0, credit: 0, items: [] };
+    const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    smCash[sid].credit += tot;
+    smCash[sid].items.push({ type: 'credit', retailer: o.retailers?.name, amount: tot, mode: 'Credit ('+o.credit_period_days+'d)', date: o.delivery_date || o.order_date });
+  });
+
+  const smList = Object.values(smCash).sort((a,b) => (b.cash+b.credit) - (a.cash+a.credit));
+  let smHtml = '';
+  if(smList.length) {
+    smHtml = '<div style="margin-top:16px;font-size:13px;font-weight:600;color:var(--mu);margin-bottom:8px">Collection by Salesman</div>';
+    smHtml += smList.map(sm => `<div class="sc-card" onclick='openSalesmanColModal(${JSON.stringify(sm).replace(/'/g, "&apos;")})' style="background:var(--surface);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer">
+      <div style="font-weight:600">${esc(sm.name)}</div>
+      <div style="display:flex;gap:12px;font-size:13px">
+        <span style="color:#22c55e">Cash/UPI: ${fmtMoneyCompact(sm.cash)}</span>
+        <span style="color:#f43f5e">Credit: ${fmtMoneyCompact(sm.credit)}</span>
+        <span style="color:var(--mu)">›</span>
+      </div>
+    </div>`).join('');
+  }
+
   document.getElementById('col-summary').innerHTML=`<div class="date-summary">
     <div class="ds-left">
       <div class="ds-range">${esc(range.label)}</div>
@@ -2973,10 +3368,11 @@ function exportCollectionsExcel(){
 
 function switchAdminTab(tab,el){
   document.querySelectorAll('#pg-admin .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
-  ['orders','collections','reports','forecasts','manage'].forEach(t=>document.getElementById('at-'+t).style.display=t===tab?'block':'none');
+  ['orders','collections','reports','analytics','manage'].forEach(t=>document.getElementById('at-'+t).style.display=t===tab?'block':'none');
   if(tab==='collections')loadCollections();
   if(tab==='reports')loadReports();
-  if(tab==='forecasts')loadForecasts();
+  if(tab==='analytics')loadAnalytics();
+  
   if(tab==='manage')loadManage();
 }
 
@@ -3125,10 +3521,10 @@ async function loadReports(){
   data.forEach(o=>{const k=normalizeOrderDate(o.order_date);if(k in days)days[k]++;});
   const maxD=Math.max(...Object.values(days),1);
   const bySM={},smRev={};
-  data.forEach(o=>{const n=o.salesmen?.name||'?';bySM[n]=(bySM[n]||0)+1;const rev=Math.round((o.order_items||[]).reduce((s,i)=>s+(i.quantity*(i.rate||0)),0));smRev[n]=(smRev[n]||0)+rev;});
+  data.forEach(o=>{const n=o.salesmen?.name||'?';bySM[n]=(bySM[n]||0)+1;const rev=Math.round((o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0));smRev[n]=(smRev[n]||0)+rev;});
   const byRT={};data.forEach(o=>{const n=o.retailers?.name||'?';byRT[n]=(byRT[n]||0)+1;});
   const unpaid=data.filter(o=>o.payments?.[0]?.status!=='paid').length;
-  const totalRev=data.reduce((s,o)=>(o.order_items||[]).reduce((ss,i)=>ss+(i.quantity*(i.rate||0)),0)+s,0);
+  const totalRev=data.reduce((s,o)=>(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0)+s,0);
   
   el.innerHTML=`
     <div class="card" style="background:var(--or-grad);color:#fff;border:none;box-shadow:var(--sh-or-sm);padding:22px 20px">
@@ -3205,6 +3601,7 @@ function loadManage(){
       <button class="btn btn-or" onclick="manageList('products')" style="flex-direction:column;padding:18px 12px;gap:6px;text-align:center"><span style="display:flex;align-items:center;justify-content:center">${ico('box',22)}</span><span style="font-size:13px;font-weight:600">Products</span></button>
       <button class="btn btn-or" onclick="manageList('retailers')" style="flex-direction:column;padding:18px 12px;gap:6px;text-align:center"><span style="display:flex;align-items:center;justify-content:center">${ico('shop',22)}</span><span style="font-size:13px;font-weight:600">Retailers</span></button>
       <button class="btn btn-or" onclick="manageList('salesmen')" style="flex-direction:column;padding:18px 12px;gap:6px;text-align:center"><span style="display:flex;align-items:center;justify-content:center">${ico('user',22)}</span><span style="font-size:13px;font-weight:600">Salesmen</span></button>
+      <button class="btn btn-or" onclick="manageList('areas')" style="flex-direction:column;padding:18px 12px;gap:6px;text-align:center"><span style="display:flex;align-items:center;justify-content:center">${ico('map-pin',22)}</span><span style="font-size:13px;font-weight:600">Areas</span></button>
       <button class="btn btn-or" onclick="manageList('updates')" style="flex-direction:column;padding:18px 12px;gap:6px;text-align:center;grid-column:span 2"><span style="display:flex;align-items:center;justify-content:center">📢</span><span style="font-size:13px;font-weight:600">Updates & Offers</span></button>
     </div>
     <button class="btn btn-ghost" onclick="showExcelForm()" style="margin-bottom:16px">Bulk Upload via Excel</button>
@@ -3213,7 +3610,17 @@ function loadManage(){
 
 async function manageList(type, filterId = null){
   const view=document.getElementById('manage-view');view.innerHTML=skeletonList();
-  if(type==='companies'){
+  if(type==='areas'){
+    const{data}=await db.from('areas').select('*').order('name');
+    view.innerHTML=`<button class="btn btn-or btn-sm" style="margin-bottom:12px" onclick="editArea(null)">+ Add Area</button>
+      <div>${(data||[]).map(a=>`<div class="list-item">
+        <div class="li-info"><div class="li-name">${esc(a.name)}</div></div>
+        <div class="li-actions">
+          <button class="btn btn-sm btn-ghost" onclick="editArea('${a.id}')">Edit</button>
+          <button class="icon-btn danger" onclick="event.stopPropagation();strictDeleteEntity('areas','${a.id}','${escQ(a.name)}')">${ico('trash',15)}</button>
+        </div>
+      </div>`).join('')||'<div class="no-data">No areas created yet. Click + Add Area above.</div>'}</div>`;
+  }else if(type==='companies'){
     const{data}=await db.from('companies').select('*').order('name');
     view.innerHTML=`<button class="btn btn-or btn-sm" style="margin-bottom:12px" onclick="editCompany(null)">+ Add Company</button>
       <div>${(data||[]).map(c=>`<div class="list-item" style="cursor:pointer" onclick="manageList('products','${c.id}')">
@@ -3244,7 +3651,7 @@ async function manageList(type, filterId = null){
             ${r.credit_limit ? `<span style="color:var(--mu);font-weight:450">/ ${fmtMoney(r.credit_limit)} limit</span>` : ''}
           </div>
         </div>
-        <div class="li-actions"><button class="icon-btn" onclick="editRetailer('${r.id}')">${ico('edit',15)}</button><button class="icon-btn danger" onclick="deleteRetailer('${r.id}','${escQ(r.name)}')">${ico('trash',15)}</button></div>
+        <div class="li-actions"><button class="icon-btn" onclick="editRetailer('${r.id}')">${ico('edit',15)}</button><button class="icon-btn danger" onclick="event.stopPropagation();strictDeleteEntity('retailers','${r.id}','${escQ(r.name)}')">${ico('trash',15)}</button></div>
       </div>`).join('')||'<div class="no-data">No retailers yet.</div>'}</div>`;
   }else if(type==='salesmen'){
     const{data}=await db.from('salesmen').select('*').neq('name','Admin').order('name');
@@ -3279,7 +3686,7 @@ function renderManageProds(prods){
       <div class="li-meta">${esc(p.sku)} · ${esc(p.companies?.name||'-')}${p.pack_size?' · '+esc(p.pack_size):''}</div>
       <div class="li-meta">Rate: ${fmtMoney(p.rate)}${p.mrp?' · MRP: ₹'+p.mrp:''}${p.scheme_buy?' · Scheme '+p.scheme_buy+'+'+p.scheme_free:''}</div>
     </div>
-    <div class="li-actions"><button class="icon-btn" onclick="editProduct('${p.id}')">${ico('edit',15)}</button><button class="icon-btn danger" onclick="deleteProduct('${p.id}','${escQ(p.name)}')">${ico('trash',15)}</button></div>
+    <div class="li-actions"><button class="icon-btn" onclick="editProduct('${p.id}')">${ico('edit',15)}</button><button class="icon-btn danger" onclick="event.stopPropagation();strictDeleteEntity('products','${p.id}','${escQ(p.name)}')">${ico('trash',15)}</button></div>
   </div>`).join('');
 }
 function filterManageProducts(q){q=q.toLowerCase();const filtered=(window._manageProds||[]).filter(p=>p.name.toLowerCase().includes(q)||p.sku.toLowerCase().includes(q)||(p.companies?.name||'').toLowerCase().includes(q));document.getElementById('m-prods-list').innerHTML=renderManageProds(filtered);}
@@ -3325,6 +3732,29 @@ const ui={
   }
 };
 
+
+async function editArea(id){
+  let name='';
+  if(id){
+    toast('Loading...');
+    const{data}=await db.from('areas').select('*').eq('id',id).single();
+    if(data)name=data.name;
+  }
+  document.getElementById('modal-content').innerHTML=`<div class="form-title">${id?'Edit Area':'New Area'}</div>
+    <div class="fg"><label>Area Name</label><input type="text" id="m-area-name" value="${escQ(name)}"></div>
+    <button class="btn btn-or" onclick="saveArea('${id||''}',this)">Save</button>`;
+  openModal();
+}
+
+async function saveArea(id,btn){
+  const name=document.getElementById('m-area-name').value.trim();
+  if(!name){toast('Name required');return;}
+  btn.disabled=true;btn.textContent='Saving...';
+  const payload={name};
+  const req=id?db.from('areas').update(payload).eq('id',id):db.from('areas').insert(payload);
+  const{error}=await req;
+  if(error)toast(error.message);else{toast('Saved');closeModal();manageList('areas');}
+}
 async function editCompany(id){
   let row={name:''};
   if(id){const{data}=await db.from('companies').select('*').eq('id',id).single();if(data)row=data;}
@@ -3881,7 +4311,7 @@ function calculateIncentive(){
     normalizeOrderDate(o.order_date)<=toD
   );
   
-  const totalRev=orders.reduce((s,o)=>(o.order_items||[]).reduce((ss,i)=>ss+(i.quantity*(i.rate||0)),0)+s,0);
+  const totalRev=orders.reduce((s,o)=>(o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0)+s,0);
   
   let inc=0;
   let remaining=totalRev;
@@ -4266,7 +4696,7 @@ function renderProductPerformance() {
     
     o.order_items.forEach(i => {
       const pName = i.products?.name?.toLowerCase() || '';
-      const val = i.quantity * (i.rate||0);
+      const val = (parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0);
       if (pName.includes('eco') || pName.includes('organic')) areaStats[area].eco += val;
       else areaStats[area].health += val;
     });
@@ -4482,7 +4912,478 @@ function exportSelectedMarg(){
   clearSelection();
 }
 
+async function initApp() {
+  try {
+    restoreState();
+    if (S.isAdmin) {
+      showPageDirect('pg-admin');
+      if (typeof switchAdminTab === 'function') switchAdminTab('orders', document.querySelector('.tab'));
+    } else if (S.salesman) {
+      showPageDirect('pg-salesman-home');
+    } else {
+      showPageDirect('pg-auth');
+    }
+  } catch(e) {
+    console.error('initApp error:', e);
+  }
+}
+
 initApp();
+
+// ============================================================
+//   ANALYTICS ENGINE
+// ============================================================
+let analyticsCharts = {};
+
+async function loadAnalytics() {
+  const container = document.getElementById('analytics-dashboard-content');
+  const loading = document.getElementById('analytics-loading');
+  const errEl = document.getElementById('analytics-error');
+  
+  if(!S.analyticsFilter) S.analyticsFilter = 'thisMonth';
+  
+  container.style.display = 'none';
+  errEl.style.display = 'none';
+  loading.style.display = 'block';
+
+  // Apply Date Filter for DB query! (LAZY LOADING)
+  const range = getDateRange(S.analyticsFilter);
+  
+  let qOrders = db.from('orders').select('*, salesmen!orders_salesman_id_fkey(name), retailers(id,name,area,outstanding,credit_limit), order_items(quantity,rate,products(name,sku)), payments(status)');
+  let qCols = db.from('collections').select('amount, mode, collected_at');
+
+  if(range.from) {
+    qOrders = qOrders.gte('order_date', range.from);
+    qCols = qCols.gte('collected_at', range.from);
+  }
+  if(range.to) {
+    qOrders = qOrders.lte('order_date', range.to);
+    qCols = qCols.lte('collected_at', range.to + 'T23:59:59');
+  }
+
+  qOrders = qOrders.order('order_date', {ascending:false}).limit(1500); // safety limit
+
+  const [resOrders, resCol] = await Promise.all([qOrders, qCols]);
+  
+  if(resOrders.error) { 
+    loading.style.display = 'none';
+    errEl.style.display = 'block';
+    errEl.innerHTML = 'Error loading analytics: ' + resOrders.error.message;
+    console.error(resOrders.error); 
+    return; 
+  }
+
+  window._analyticsData = {
+    orders: resOrders.data || [],
+    collections: resCol.data || []
+  };
+
+  loading.style.display = 'none';
+  container.style.display = 'block';
+  renderAnalyticsDashboard();
+}
+
+function filterAnalytics(key, el) {
+  document.querySelectorAll('#analytics-date-filters .chip').forEach(c=>c.classList.remove('active'));
+  if(el) el.classList.add('active');
+  S.analyticsFilter = key;
+  loadAnalytics(); // Fetch new data for the selected range instead of just filtering locally!
+}
+
+function renderAnalyticsDashboard() {
+  try {
+    const allOrders = window._analyticsData.orders;
+    const allCols = window._analyticsData.collections;
+
+    const orders = allOrders;
+
+    // Common Neon Theme config
+    const theme = { mode: 'dark' };
+    const common = {
+      chart: { foreColor: '#A0AEC0', toolbar: { show: false }, background: 'transparent', fontFamily: 'Inter, sans-serif' },
+      theme: theme,
+      colors: ['#FF2A85', '#00F2FE', '#8E2DE2', '#4FACFE', '#00E396', '#FEB019'],
+      tooltip: { theme: 'dark', style: { fontSize: '13px' } },
+      grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 4 }
+    };
+
+    renderStatisticRadials(orders, common);
+    renderTrendsChart(orders, common);
+    renderNetworkTopology(orders, common);
+    renderTreemap(orders, common);
+    renderHeatmap(orders, common);
+    renderSalesmenChart(orders, common);
+    renderHistogram(orders, common);
+    
+    document.getElementById('analytics-error').style.display='none';
+    document.getElementById('analytics-loading').style.display='none';
+  } catch(e) {
+    document.getElementById('analytics-error').style.display='block';
+    document.getElementById('analytics-error').textContent = 'Render Error: ' + e.message + ' \n' + e.stack;
+    document.getElementById('analytics-loading').style.display='none';
+  }
+}
+
+// 0. Top Row Statistic Radials
+function renderStatisticRadials(orders, common) {
+  const totOrders = orders.length || 1;
+  const delivered = orders.filter(o => o.status === 'delivered').length;
+  const paid = orders.filter(o => (o.payments?.[0]?.status) === 'paid').length;
+  
+  const activeRet = new Set(orders.map(o => o.retailers?.id)).size;
+  const totalRet = S.adminAllRetailers?.length || Math.max(activeRet, 1);
+
+  const monthRev = orders.reduce((s,o)=>s+((o.order_items||[]).reduce((ss,i)=>ss+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0)),0);
+  const target = 500000; // Example target
+  
+  const metrics = [
+    { id: 'chart-radial-1', pct: Math.round((delivered/totOrders)*100), color: '#FF2A85', label: 'Delivery' },
+    { id: 'chart-radial-2', pct: Math.round((paid/totOrders)*100), color: '#00F2FE', label: 'Collection' },
+    { id: 'chart-radial-3', pct: Math.round((activeRet/totalRet)*100), color: '#8E2DE2', label: 'Active Ret' },
+    { id: 'chart-radial-4', pct: Math.min(100, Math.round((monthRev/target)*100)), color: '#00E396', label: 'Target' }
+  ];
+
+  metrics.forEach((m, i) => {
+    if(analyticsCharts['rad'+i]) analyticsCharts['rad'+i].destroy();
+    const opt = {
+      series: [m.pct],
+      chart: { type: 'radialBar', height: 180, sparkline: { enabled: true } },
+      plotOptions: {
+        radialBar: {
+          startAngle: -90,
+          endAngle: 90,
+          track: { background: 'rgba(255,255,255,0.05)', strokeWidth: '100%', margin: 5, dropShadow: { enabled: true, top: 0, left: 0, blur: 3, opacity: 0.5 } },
+          dataLabels: {
+            name: { show: false },
+            value: { offsetY: 0, fontSize: '24px', fontWeight: 800, color: m.color, formatter: (v) => v + '%' }
+          }
+        }
+      },
+      colors: [m.color],
+      stroke: { lineCap: 'round' }
+    };
+    analyticsCharts['rad'+i] = new ApexCharts(document.querySelector("#" + m.id), opt);
+    analyticsCharts['rad'+i].render();
+  });
+}
+
+// 1. Trends Line Chart (Area Glowing)
+function renderTrendsChart(orders, common) {
+  const daily = {};
+  orders.forEach(o => {
+    const d = toYMD(new Date(o.order_date));
+    if(!daily[d]) daily[d] = 0;
+    const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    daily[d] += tot;
+  });
+  
+  const sortedDates = Object.keys(daily).sort();
+  const data = sortedDates.map(d => daily[d]);
+  
+  if(analyticsCharts['trends']) analyticsCharts['trends'].destroy();
+  const opt = {
+    ...common,
+    series: [
+      { name: 'Revenue', type: 'area', data: data }
+    ],
+    chart: { ...common.chart, type: 'area', height: 350 },
+    colors: ['#FF2A85'],
+    stroke: { curve: 'smooth', width: 3 },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.7,
+        opacityTo: 0.05,
+        stops: [0, 90, 100]
+      }
+    },
+    dataLabels: { enabled: false },
+    xaxis: { categories: sortedDates.map(d=>d.substring(5)), labels: { style: { colors: '#718096' } } },
+    yaxis: { labels: { formatter: (v) => '₹' + (v/1000).toFixed(1) + 'k', style: { colors: '#718096' } } }
+  };
+  analyticsCharts['trends'] = new ApexCharts(document.querySelector("#chart-line-trends"), opt);
+  analyticsCharts['trends'].render();
+}
+
+// 2. Network Topology (Bubble Chart mapping Salesman -> Retailer -> Order Size)
+function renderNetworkTopology(orders, common) {
+  // Bubble series: each salesman is a series, each bubble is a retailer
+  const seriesMap = {}; // by salesman
+  orders.forEach(o => {
+    const sm = o.salesmen?.name || 'Unassigned';
+    const rt = o.retailers?.name || 'Unknown';
+    if(!seriesMap[sm]) seriesMap[sm] = {};
+    if(!seriesMap[sm][rt]) seriesMap[sm][rt] = { count: 0, val: 0, cr: Number(o.retailers?.credit_limit||0) };
+    seriesMap[sm][rt].count++;
+    seriesMap[sm][rt].val += (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+  });
+
+  const series = Object.keys(seriesMap).map(sm => {
+    return {
+      name: sm,
+      data: Object.keys(seriesMap[sm]).map(rt => {
+        const d = seriesMap[sm][rt];
+        return [ Math.min(d.cr, 500000), d.count, d.val/1000 ]; // x: credit, y: orders, z: value (bubble size)
+      })
+    };
+  });
+
+  if(analyticsCharts['scatter']) analyticsCharts['scatter'].destroy();
+  const opt = {
+    ...common,
+    series: series,
+    chart: { ...common.chart, type: 'bubble', height: 320 },
+    dataLabels: { enabled: false },
+    fill: { opacity: 0.8 },
+    xaxis: { title: { text: 'Retailer Credit Limit' }, labels: { formatter: v => '₹'+(v/1000)+'k' } },
+    yaxis: { title: { text: 'Order Frequency' } },
+    theme: { palette: 'palette1' }
+  };
+  analyticsCharts['scatter'] = new ApexCharts(document.querySelector("#chart-scatter-credit"), opt);
+  analyticsCharts['scatter'].render();
+}
+
+// 3. Treemap (Brand Penetration)
+function renderTreemap(orders, common) {
+  const brands = {};
+  orders.forEach(o => {
+    (o.order_items||[]).forEach(i => {
+      const comp = i.products?.companies?.name || i.products?.name?.split(' ')[0] || 'Unknown';
+      brands[comp] = (brands[comp]||0) + ((parseFloat(i.quantity)||0) * (parseFloat(i.rate)||0));
+    });
+  });
+
+  const data = Object.keys(brands).map(k => ({ x: k, y: Math.round(brands[k]) })).sort((a,b)=>b.y - a.y).slice(0, 15);
+
+  if(analyticsCharts['treemap']) analyticsCharts['treemap'].destroy();
+  const opt = {
+    ...common,
+    series: [{ data }],
+    chart: { ...common.chart, type: 'treemap', height: 320 },
+    colors: ['#8E2DE2'],
+    plotOptions: {
+      treemap: {
+        enableShades: true,
+        shadeIntensity: 0.5,
+        reverseNegativeShade: true,
+        colorScale: { ranges: [{ from: 0, to: 9999999, color: '#8E2DE2' }] }
+      }
+    }
+  };
+  analyticsCharts['treemap'] = new ApexCharts(document.querySelector("#chart-treemap-company"), opt);
+  analyticsCharts['treemap'].render();
+}
+
+// 4. Heatmap
+function renderHeatmap(orders, common) {
+  const areaProduct = {};
+  orders.forEach(o => {
+    const a = o.retailers?.area || 'Unknown';
+    if(!areaProduct[a]) areaProduct[a] = {};
+    (o.order_items||[]).forEach(i => {
+      const p = i.products?.name?.substring(0, 15) || 'Item';
+      areaProduct[a][p] = (areaProduct[a][p]||0) + (parseFloat(i.quantity)||0);
+    });
+  });
+
+  const areas = Object.keys(areaProduct).slice(0,6);
+  const allProds = new Set();
+  areas.forEach(a => Object.keys(areaProduct[a]).forEach(p => allProds.add(p)));
+  const topProds = Array.from(allProds).slice(0, 8);
+
+  const series = areas.map(a => ({
+    name: a,
+    data: topProds.map(p => ({ x: p, y: areaProduct[a][p] || 0 }))
+  }));
+
+  if(analyticsCharts['heatmap']) analyticsCharts['heatmap'].destroy();
+  const opt = {
+    ...common,
+    series: series,
+    chart: { ...common.chart, type: 'heatmap', height: 320 },
+    colors: ['#4FACFE'],
+    dataLabels: { enabled: false }
+  };
+  analyticsCharts['heatmap'] = new ApexCharts(document.querySelector("#chart-heatmap-products"), opt);
+  analyticsCharts['heatmap'].render();
+}
+
+// 5. Salesmen Bar Chart
+function renderSalesmenChart(orders, common) {
+  const sm = {};
+  orders.forEach(o => {
+    const n = o.salesmen?.name || 'Unassigned';
+    sm[n] = (sm[n]||0) + (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+  });
+  const data = Object.keys(sm).map(k => ({ x: k, y: Math.round(sm[k]) })).sort((a,b)=>b.y - a.y).slice(0, 7);
+
+  if(analyticsCharts['salesmen']) analyticsCharts['salesmen'].destroy();
+  const opt = {
+    ...common,
+    series: [{ name: 'Revenue', data: data.map(d=>d.y) }],
+    chart: { ...common.chart, type: 'bar', height: 300 },
+    colors: ['#00E396'],
+    plotOptions: { bar: { borderRadius: 4, horizontal: true } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: data.map(d=>d.x) },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.8, opacityTo: 0.3, stops: [0, 90, 100] } }
+  };
+  analyticsCharts['salesmen'] = new ApexCharts(document.querySelector("#chart-bar-salesmen"), opt);
+  analyticsCharts['salesmen'].render();
+}
+
+// 6. Histogram
+function renderHistogram(orders, common) {
+  const bins = { '0-2k':0, '2k-5k':0, '5k-10k':0, '10k-25k':0, '25k+':0 };
+  orders.forEach(o => {
+    const tot = (o.order_items||[]).reduce((s,i)=>s+((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)),0);
+    if(tot < 2000) bins['0-2k']++;
+    else if(tot < 5000) bins['2k-5k']++;
+    else if(tot < 10000) bins['5k-10k']++;
+    else if(tot < 25000) bins['10k-25k']++;
+    else bins['25k+']++;
+  });
+
+  if(analyticsCharts['hist']) analyticsCharts['hist'].destroy();
+  const opt = {
+    ...common,
+    series: [{ name: 'Orders', data: Object.values(bins) }],
+    chart: { ...common.chart, type: 'bar', height: 250 },
+    colors: ['#FEB019'],
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '80%' } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: Object.keys(bins) },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.8, opacityTo: 0.3, stops: [0, 90, 100] } }
+  };
+  analyticsCharts['hist'] = new ApexCharts(document.querySelector("#chart-hist-orders"), opt);
+  analyticsCharts['hist'].render();
+}
+
+
+// ============================================================
+//   ADVANCED FORECASTING MODULE
+// ============================================================
+function openForecastModal() {
+    document.getElementById('forecast-modal').style.display = 'flex';
+    document.getElementById('forecast-results').style.display = 'none';
+    
+    // Populate Selectors from loaded data
+    const rs = new Map();
+    const as = new Set();
+    
+    if(window._analyticsData && window._analyticsData.orders) {
+        window._analyticsData.orders.forEach(o => {
+            if(o.retailers) {
+                rs.set(o.retailers.id, o.retailers.name);
+                if(o.retailers.area) as.add(o.retailers.area);
+            }
+        });
+    } else {
+        (S.retailers||[]).forEach(r => {
+            rs.set(r.id, r.name);
+            if(r.area) as.add(r.area);
+        });
+    }
+    
+    const pSel = document.getElementById('forecast-party');
+    pSel.innerHTML = '<option value="all">All Retailers</option>';
+    Array.from(rs.keys()).forEach(id => {
+        pSel.innerHTML += `<option value="${id}">${rs.get(id)}</option>`;
+    });
+    
+    const aSel = document.getElementById('forecast-area');
+    aSel.innerHTML = '<option value="all">All Areas</option>';
+    Array.from(as).forEach(a => {
+        aSel.innerHTML += `<option value="${a}">${a}</option>`;
+    });
+}
+
+function runForecast() {
+    const pId = document.getElementById('forecast-party').value;
+    const area = document.getElementById('forecast-area').value;
+    
+    document.getElementById('forecast-results').style.display = 'none';
+    document.getElementById('forecast-loading').style.display = 'block';
+    
+    setTimeout(() => {
+        const allOrders = window._analyticsData?.orders || [];
+        
+        let filtered = allOrders;
+        if(pId !== 'all') filtered = filtered.filter(o => o.retailers?.id === pId);
+        if(area !== 'all') filtered = filtered.filter(o => o.retailers?.area === area);
+        
+        // Simple heuristic for projection (Last 30 days daily average * 30)
+        let totalVal = 0;
+        let pastVal = 0;
+        
+        const now = new Date();
+        const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(now.getDate() - 30);
+        const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(now.getDate() - 60);
+        
+        filtered.forEach(o => {
+            const d = new Date(o.order_date);
+            const val = (o.order_items||[]).reduce((sum, i) => sum + ((parseFloat(i.quantity)||0)*(parseFloat(i.rate)||0)), 0);
+            if(d >= thirtyDaysAgo) totalVal += val;
+            else if(d >= sixtyDaysAgo && d < thirtyDaysAgo) pastVal += val;
+        });
+        
+        const dailyAvg = totalVal / 30;
+        const projected30d = (dailyAvg * 30) * 1.05; // 5% heuristic growth
+        
+        let trend = 0;
+        if(pastVal > 0) trend = ((totalVal - pastVal) / pastVal) * 100;
+        
+        document.getElementById('forecast-val').textContent = '? ' + projected30d.toLocaleString(undefined, {maximumFractionDigits:0});
+        
+        const trEl = document.getElementById('forecast-trend');
+        trEl.textContent = (trend > 0 ? '+' : '') + trend.toFixed(1) + '%';
+        trEl.style.color = trend >= 0 ? '#00E396' : '#FF4560';
+        
+        document.getElementById('forecast-loading').style.display = 'none';
+        document.getElementById('forecast-results').style.display = 'block';
+        
+        // Render Chart
+        renderDetailedForecastChart(projected30d, dailyAvg);
+        
+    }, 800); // Simulate AI crunching
+}
+
+function renderDetailedForecastChart(projected, dailyAvg) {
+    if(analyticsCharts['forecast']) analyticsCharts['forecast'].destroy();
+    
+    const cats = [];
+    const vals = [];
+    const now = new Date();
+    
+    for(let i=0; i<30; i++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        cats.push(d.toLocaleDateString('en-US', {month:'short', day:'numeric'}));
+        
+        // Add some noise to the daily average for realism
+        const noise = (Math.random() * 0.4) - 0.2; // +/- 20%
+        vals.push(dailyAvg * (1 + noise));
+    }
+    
+    const opt = {
+        chart: { type: 'area', height: 250, foreColor: '#888', toolbar: {show:false}, background: 'transparent', fontFamily: 'Inter' },
+        theme: { mode: 'dark' },
+        series: [{ name: 'Projected Demand', data: vals.map(v=>Math.round(v)) }],
+        xaxis: { categories: cats, tickAmount: 6, tooltip: {enabled:false} },
+        yaxis: { labels: { formatter: v => '?' + (v/1000).toFixed(1) + 'k' } },
+        colors: ['#008FFB'],
+        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.6, opacityTo: 0.1, stops: [0, 90, 100] } },
+        dataLabels: { enabled: false },
+        stroke: { curve: 'smooth', width: 3 },
+        tooltip: { theme: 'dark' },
+        grid: { borderColor: '#333', strokeDashArray: 3 }
+    };
+    
+    analyticsCharts['forecast'] = new ApexCharts(document.querySelector("#chart-forecast-detailed"), opt);
+    analyticsCharts['forecast'].render();
+}
+
 </script>
 </body>
 </html>
